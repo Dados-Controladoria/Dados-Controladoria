@@ -5,32 +5,43 @@ import glob
 from openpyxl import Workbook
 from datetime import datetime
 
-# --- DEFINA SEUS CAMINHOS DE ENTRADA E SAÍDA AQUI ---
+# ==============================================================================
+# --- CONFIGURAÇÃO MANUAL PROVISÓRIA ---
+#
+# Passo 1: Defina os nomes dos arquivos que você baixou.
+MES_ATUAL_NOME_ARQUIVO = "07-25.xlsx"
+MES_ANTERIOR_NOME_ARQUIVO = "06-25.xlsx"
+
+# Passo 2: Escolha qual arquivo você quer processar NESTA execução.
+#          - Para processar o mês ANTERIOR, use: MES_ANTERIOR_NOME_ARQUIVO
+#          - Para processar o mês ATUAL, use: MES_ATUAL_NOME_ARQUIVO
+#
+ARQUIVO_A_PROCESSAR = MES_ATUAL_NOME_ARQUIVO
+#
+# ==============================================================================
+
+
+# --- CAMINHOS DE ENTRADA E SAÍDA ---
 CAMINHO_DE_ENTRADA = r"C:\Users\jea_goncalves\Desktop\bases_balancete"
 CAMINHO_DE_SAIDA = r"C:\Users\jea_goncalves\Desktop\bases_balancete\saidas"
 
 # --- 2. FUNÇÕES AUXILIARES ---
-
 def formatar_saldos(valor):
-    """
-    Limpa e converte uma string de saldo (com 'C' ou 'D') para um número float.
-    'C' (Crédito) torna o número negativo. 'D' (Débito) torna positivo.
-    """
     valor_str = str(valor).strip()
     valor_limpo = valor_str.replace('.', '').replace(',', '.')
-    
     if valor_limpo.endswith('C'):
         return float('-' + valor_limpo[:-1])
     elif valor_limpo.endswith('D'):
         return float(valor_limpo[:-1])
-    
     return float(valor_limpo)
 
 # --- 3. CARREGAMENTO DOS DADOS ---
-df = pd.read_excel(os.path.join(CAMINHO_DE_ENTRADA, "06-25.xlsx"))
+caminho_completo_entrada = os.path.join(CAMINHO_DE_ENTRADA, ARQUIVO_A_PROCESSAR)
+print(f"--- Processando arquivo: {ARQUIVO_A_PROCESSAR} ---")
+df = pd.read_excel(caminho_completo_entrada)
 print("Arquivo carregado com sucesso. Iniciando limpeza...")
 
-# --- 4. LIMPEZA E TRANSFORMAÇÃO DOS DADOS ---
+# --- 4. LIMPEZA E TRANSFORMAÇÃO (Seu código original mantido) ---
 df_processado = (
     df
     .drop(columns=[
@@ -48,52 +59,50 @@ df_processado = (
         'Unnamed: 12': 'Saldo Atual'
     })
 )
-print("Colunas renomeadas e linhas de cabeçalho removidas.")
-
-# ==============================================================================
-# AJUSTE ADICIONADO CONFORME SOLICITADO
-# ==============================================================================
-# Primeiro, garante que 'Classificação' seja do tipo string para manipulação
 df_processado['Classificação'] = df_processado['Classificação'].astype(str)
-
-# 1. Remove os pontos da coluna 'Classificação'
 df_processado['Classificação'] = df_processado['Classificação'].str.replace('.', '', regex=False)
-print("Pontos da coluna 'Classificação' foram removidos.")
-
-# 2. Remove linhas onde 'Classificação' (já sem os pontos) tem menos de 10 dígitos
-linhas_antes_filtro = len(df_processado)
 df_processado = df_processado[df_processado['Classificação'].str.len() >= 10]
-linhas_depois_filtro = len(df_processado)
-print(f"{linhas_antes_filtro - linhas_depois_filtro} linhas foram removidas por terem 'Classificação' com menos de 10 dígitos.")
-# ==============================================================================
 
-# --- 5. FORMATAÇÃO E CONVERSÃO DE TIPOS ---
+# --- 5. FORMATAÇÃO E CONVERSÃO DE TIPOS (Seu código original mantido) ---
 df_processado['Saldo Anterior'] = df_processado['Saldo Anterior'].apply(formatar_saldos)
 df_processado['Saldo Atual'] = df_processado['Saldo Atual'].apply(formatar_saldos)
 df_processado['Débito'] = df_processado['Débito'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
 df_processado['Crédito'] = df_processado['Crédito'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
+print("Dados processados e formatados.")
 
-print("Tipos de dados convertidos para número.")
-print("\nTipos de dados finais:")
-print(df_processado.dtypes)
+# --- 6. SALVANDO OS ARQUIVOS FINAIS (COM O NOME CORRETO) ---
 
-# --- 6. SALVANDO O ARQUIVO FINAL COM FORMATAÇÃO ---
+# Determina o identificador do mês com base na sua escolha no "Passo 2"
+if ARQUIVO_A_PROCESSAR == MES_ATUAL_NOME_ARQUIVO:
+    identificador_mes = "mes_atual"
+elif ARQUIVO_A_PROCESSAR == MES_ANTERIOR_NOME_ARQUIVO:
+    identificador_mes = "mes_anterior"
+else:
+    identificador_mes = "mes_desconhecido"
+    print(f"AVISO: O nome do arquivo '{ARQUIVO_A_PROCESSAR}' não corresponde a nenhuma das configurações.")
+
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-nome_arquivo_final = f"balancete_epoca_processado_{timestamp}.xlsx"
-caminho_completo_saida = os.path.join(CAMINHO_DE_SAIDA, nome_arquivo_final)
+nome_base_saida = f"balancete_epoca_{identificador_mes}_{timestamp}"
 
-print(f"\nSalvando arquivo formatado em: {caminho_completo_saida}")
+# Caminho completo para o arquivo .pkl
+caminho_saida_pkl = os.path.join(CAMINHO_DE_SAIDA, nome_base_saida + ".pkl")
+# Caminho completo para o arquivo .xlsx
+caminho_saida_xlsx = os.path.join(CAMINHO_DE_SAIDA, nome_base_saida + ".xlsx")
 
-with pd.ExcelWriter(caminho_completo_saida, engine="openpyxl") as writer:
+# Salva o arquivo .pkl (o mais importante para o seu notebook de integração)
+df_processado.to_pickle(caminho_saida_pkl)
+print(f"\nArquivo Pickle salvo em: {os.path.basename(caminho_saida_pkl)}")
+
+# Salva o arquivo .xlsx formatado
+with pd.ExcelWriter(caminho_saida_xlsx, engine="openpyxl") as writer:
     df_processado.to_excel(writer, sheet_name="Balancete Formatado", index=False)
     worksheet = writer.sheets["Balancete Formatado"]
-
     colunas_para_formatar = [3, 4, 5, 6] 
     formato_numerico = '#,##0.00'
-
     for indice_coluna in colunas_para_formatar:
         for cell in worksheet.iter_cols(min_col=indice_coluna, max_col=indice_coluna, min_row=2):
             for c in cell:
                 c.number_format = formato_numerico
                 
-print("Formatação concluída e arquivo salvo com sucesso!")
+print(f"Arquivo Excel salvo em: {os.path.basename(caminho_saida_xlsx)}")
+print("\nProcesso concluído com sucesso!")
