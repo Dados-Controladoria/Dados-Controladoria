@@ -13,7 +13,7 @@ from dotenv import load_dotenv # Adicionado
 load_dotenv()
 
 # --- AJUSTE 1: Caminho de saída definido diretamente no script ---
-CAMINHO_DE_SAIDA = r"C:\Users\jea_goncalves\Desktop\bases_balancete\saidas"
+CAMINHO_DE_SAIDA = r"C:\Users\jea_goncalves\Desktop\balancetes\saidas\oracle"
 
 # Carrega as variáveis sensíveis do ambiente
 DB_USER = os.getenv("ORACLE_USER")
@@ -85,25 +85,56 @@ finally:
 df['ultima_altercao_gl'] = df['ultima_altercao_gl'].dt.strftime('%d/%m/%Y %H:%M:%S')
 df['data_efetiva'] = df['data_efetiva'].dt.strftime('%d/%m/%Y')
 
+df = df.sort_values(by=['periodo', 'empresa','conta'])
+
+
 # --- AJUSTE 2: Usa a variável CAMINHO_DE_SAIDA para criar o caminho completo ---
+
+CAMINHO_DE_SAIDA_PKL = r"C:\Users\jea_goncalves\Desktop\balancetes\saidas\pkl"
+
+# --- GERAÇÃO DOS NOMES E CAMINHOS DOS ARQUIVOS ---
+
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-nome_arquivo = f"balancete_magalu_formatado_{timestamp}.xlsx"
-arquivo_salvo_dinamico = os.path.join(CAMINHO_DE_SAIDA, nome_arquivo)
 
-print(f"\nArquivo será salvo em: {arquivo_salvo_dinamico}")
+# AJUSTE 1: O nome base não deve conter a extensão.
+nome_base_arquivo = f"bal_magalu_processado_{timestamp}"
 
-# Bloco de formatação e salvamento mantido exatamente como no seu original
-colunasParaFormatar = [8,9,10,11,12]
+# Cria os caminhos completos para cada tipo de arquivo, adicionando a extensão correta.
+arquivo_salvo_xlsx = os.path.join(CAMINHO_DE_SAIDA, f"{nome_base_arquivo}.xlsx")
+arquivo_salvo_pkl = os.path.join(CAMINHO_DE_SAIDA_PKL, f"{nome_base_arquivo}.pkl")
 
-with pd.ExcelWriter(arquivo_salvo_dinamico, engine="openpyxl") as writer:
-    df.to_excel(writer, sheet_name="Sheet1",index=False)
+print(f"Salvando arquivo Excel em: {arquivo_salvo_xlsx}")
+print(f"Salvando arquivo Pickle em: {arquivo_salvo_pkl}")
 
-    workbook = writer.book
-    worksheet = workbook["Sheet1"]
+# Bloco para formatar e salvar o arquivo .xlsx
+try:
+    # Assumindo que 'df' é o seu DataFrame final a ser salvo
+    colunasParaFormatar = [8,9,10,11,12]
 
-    for colunasDesejadas in colunasParaFormatar:
-        for cell in worksheet.iter_cols(min_col=colunasDesejadas, max_col=colunasDesejadas, min_row=2):
-            for c in cell:
-                c.number_format = '0.00'
-                
-print("Formatação concluída")
+    # AJUSTE 2: Use a variável correta 'arquivo_salvo_xlsx' no ExcelWriter.
+    with pd.ExcelWriter(arquivo_salvo_xlsx, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Sheet1", index=False)
+
+        workbook = writer.book
+        worksheet = workbook["Sheet1"]
+
+        # Aplica a formatação numérica
+        for colunasDesejadas in colunasParaFormatar:
+            # O loop foi mantido como no original, mas pode ser otimizado.
+            for cell in worksheet.iter_cols(min_col=colunasDesejadas, max_col=colunasDesejadas, min_row=2):
+                for c in cell:
+                    c.number_format = '0.00'
+    
+    print("\nArquivo Excel (.xlsx) salvo e formatado com sucesso.")
+
+except Exception as e:
+    print(f"\nOcorreu um erro ao salvar o arquivo Excel: {e}")
+
+# --- ADIÇÃO: Bloco para salvar o arquivo .pkl ---
+# Este bloco estava faltando no seu código original.
+try:
+    df.to_pickle(arquivo_salvo_pkl)
+    print("Arquivo Pickle (.pkl) salvo com sucesso.")
+    
+except Exception as e:
+    print(f"\nOcorreu um erro ao salvar o arquivo Pickle: {e}")

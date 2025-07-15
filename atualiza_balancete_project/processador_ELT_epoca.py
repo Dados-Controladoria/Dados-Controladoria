@@ -4,6 +4,8 @@ import os
 import glob
 from openpyxl import Workbook
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 
 # ==============================================================================
 # --- CONFIGURAÇÃO MANUAL PROVISÓRIA ---
@@ -22,8 +24,8 @@ ARQUIVO_A_PROCESSAR = MES_ATUAL_NOME_ARQUIVO
 
 
 # --- CAMINHOS DE ENTRADA E SAÍDA ---
-CAMINHO_DE_ENTRADA = r"C:\Users\jea_goncalves\Desktop\bases_balancete"
-CAMINHO_DE_SAIDA = r"C:\Users\jea_goncalves\Desktop\bases_balancete\saidas"
+CAMINHO_DE_ENTRADA = r"C:\Users\jea_goncalves\Desktop\balancetes"
+CAMINHO_DE_SAIDA = r"C:\Users\jea_goncalves\Desktop\balancetes\saidas\senior"
 
 # --- 2. FUNÇÕES AUXILIARES ---
 def formatar_saldos(valor):
@@ -72,20 +74,32 @@ print("Dados processados e formatados.")
 
 # --- 6. SALVANDO OS ARQUIVOS FINAIS (COM O NOME CORRETO) ---
 
+def obter_strings_de_mes():
+    """Calcula dinamicamente as strings para o mês atual e anterior no formato 'MM-YY'."""
+    hoje = datetime.now()
+    mes_atual = hoje.strftime("%m-%y")
+    
+    mes_anterior_data = hoje - relativedelta(months=1)
+    mes_anterior = mes_anterior_data.strftime("%m-%y")
+    
+    return mes_atual, mes_anterior
+
+mes_atual_str, mes_anterior_str = obter_strings_de_mes()
+
 # Determina o identificador do mês com base na sua escolha no "Passo 2"
 if ARQUIVO_A_PROCESSAR == MES_ATUAL_NOME_ARQUIVO:
-    identificador_mes = "mes_atual"
+    identificador_mes = mes_atual_str
 elif ARQUIVO_A_PROCESSAR == MES_ANTERIOR_NOME_ARQUIVO:
-    identificador_mes = "mes_anterior"
-else:
-    identificador_mes = "mes_desconhecido"
-    print(f"AVISO: O nome do arquivo '{ARQUIVO_A_PROCESSAR}' não corresponde a nenhuma das configurações.")
+    identificador_mes = mes_anterior_str
+
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-nome_base_saida = f"balancete_epoca_{identificador_mes}_{timestamp}"
+nome_base_saida = f"bal_epoca_{identificador_mes}_{timestamp}"
+
+CAMINHO_DE_SAIDA_PKL = r"C:\Users\jea_goncalves\Desktop\balancetes\saidas\pkl"
 
 # Caminho completo para o arquivo .pkl
-caminho_saida_pkl = os.path.join(CAMINHO_DE_SAIDA, nome_base_saida + ".pkl")
+caminho_saida_pkl = os.path.join(CAMINHO_DE_SAIDA_PKL, nome_base_saida + ".pkl")
 # Caminho completo para o arquivo .xlsx
 caminho_saida_xlsx = os.path.join(CAMINHO_DE_SAIDA, nome_base_saida + ".xlsx")
 
