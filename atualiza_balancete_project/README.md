@@ -23,7 +23,7 @@ conda create --name automacao_balancetes python=3.9
 
 Ative o ambiente:
 
-conda activate automacao_balancetes
+conda activate atualiza_balancete_env 
 
 Instale as bibliotecas:
 
