@@ -4,9 +4,11 @@ import logging
 import sys
 import time
 import os
+import locale
 
 # Define o caminho base onde o script está localizado
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(BASE_DIR)  # Força a execução no diretório correto
 
 # Configuração do Logging
 logging.basicConfig(
@@ -44,20 +46,32 @@ def atualizar_barra_progresso(progresso, total, comprimento=50):
     sys.stdout.write(f"\rProgresso: |{barra}| {percentual}% Completo")
     sys.stdout.flush()
 
-# Função para Executar Processos Externos (sem alterações)
+# Função para Executar Processos Externos
 def executar_processo(comando):
     try:
         logging.info(f"Executando comando: {' '.join(comando)}")
-        resultado = subprocess.run(comando, check=True, capture_output=True, text=True, encoding='utf-8', cwd=BASE_DIR)
-        if resultado.stdout: logging.info("Saida do processo:\n" + resultado.stdout)
-        if resultado.stderr: logging.warning("Saida de erro do processo:\n" + resultado.stderr)
+        resultado = subprocess.run(
+            comando,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding=locale.getpreferredencoding(False),
+            errors='replace',
+            cwd=BASE_DIR
+        )
+        if resultado.stdout:
+            logging.info("Saida do processo:\n" + resultado.stdout)
+        if resultado.stderr:
+            logging.warning("Saida de erro do processo:\n" + resultado.stderr)
         logging.info("Comando executado com sucesso.")
         return True
     except subprocess.CalledProcessError as e:
         logging.error(f"!!! ERRO ao executar o comando: {' '.join(comando)}")
         logging.error("Codigo de retorno: " + str(e.returncode))
-        if e.stdout: logging.error("Saida do processo (stdout):\n" + e.stdout)
-        if e.stderr: logging.error("Saida de erro (stderr):\n" + e.stderr)
+        if e.stdout:
+            logging.error("Saida do processo (stdout):\n" + e.stdout)
+        if e.stderr:
+            logging.error("Saida de erro (stderr):\n" + e.stderr)
         return False
     except FileNotFoundError:
         logging.error(f"!!! ERRO CRÍTICO: O comando '{comando[0]}' nao foi encontrado.")
@@ -70,7 +84,7 @@ if __name__ == "__main__":
 
     passo_atual = 0
     total_passos = 3
-    status_final = "FALHA" # Define um status padrão
+    status_final = "FALHA"
 
     try:
         logging.info("================ INICIO DA ORQUESTRACAO (HORUS) ================")
@@ -79,10 +93,7 @@ if __name__ == "__main__":
         # ETAPA 1: Epoca
         logging.info("--> ETAPA 1 de 3: Executando processador ETL da Epoca...")
         script_epoca = os.path.join(BASE_DIR, "processador_ETL_epoca.py")
-        # ==============================================================================
-        # --- ALTERAÇÃO: Usa sys.executable em vez de "python" ---
         sucesso_epoca = executar_processo([sys.executable, script_epoca])
-        # ==============================================================================
         if sucesso_epoca:
             passo_atual += 1
             atualizar_barra_progresso(passo_atual, total_passos)
@@ -92,20 +103,16 @@ if __name__ == "__main__":
         # ETAPA 2: Magalu
         logging.info("--> ETAPA 2 de 3: Executando processador ETL do Magalu...")
         script_magalu = os.path.join(BASE_DIR, "processador_ETL_magalu.py")
-        # ==============================================================================
-        # --- ALTERAÇÃO: Usa sys.executable em vez de "python" ---
         sucesso_magalu = executar_processo([sys.executable, script_magalu])
-        # ==============================================================================
         if sucesso_magalu:
             passo_atual += 1
             atualizar_barra_progresso(passo_atual, total_passos)
         else:
             raise Exception("Falha na Etapa 2: ETL Magalu")
-            
+
         # ETAPA 3: Notebook
         logging.info("--> ETAPA 3 de 3: Executando notebook de integracao...")
         notebook_integracao = os.path.join(BASE_DIR, "integracao_sheets.ipynb")
-        # Para o jupyter, mantemos o comando original, pois ele é um programa separado.
         comando_notebook = ["jupyter", "nbconvert", "--to", "notebook", "--execute", notebook_integracao, "--inplace"]
         sucesso_notebook = executar_processo(comando_notebook)
         if sucesso_notebook:
@@ -113,7 +120,7 @@ if __name__ == "__main__":
             atualizar_barra_progresso(passo_atual, total_passos)
             print("\n\nOrquestração concluída com SUCESSO!")
             logging.info("--- PROCESSO DE INTEGRACAO CONCLUIDO COM SUCESSO! ---")
-            status_final = "SUCESSO" # Atualiza o status
+            status_final = "SUCESSO"
         else:
             raise Exception("Falha na Etapa 3: Notebook de Integração")
 
@@ -122,7 +129,7 @@ if __name__ == "__main__":
         logging.warning("!!! ORQUESTRACAO INTERROMPIDA PELO USUARIO !!!")
         status_final = "INTERROMPIDO"
         sys.exit(1)
-        
+
     except Exception as e:
         print(f"\n\nERRO: A orquestração falhou. Verifique o arquivo 'processo_orquestrador.log' para detalhes.")
         logging.error(f"!!! ORQUESTRAÇÃO FALHOU: {e} !!!")
