@@ -56,13 +56,13 @@ try:
          apps.gl_ledgers               gl,
          apps.fnd_flex_values_vl       ffvv
          
-    where gb.code_combination_id       = gcc.code_combination_id
+    where gb.code_combination_id       = gcc.code_combination_id    
      and gb.ledger_id                   = gl.ledger_id
      and gcc.segment3                   = ffvv.flex_value
      and ffvv.flex_value_set_id         IN (1014008,1016808)
      and gb.ledger_id                   IN (2022,2042)
      and gb.actual_flag                 IN ('A')
-     and gb.period_name                 IN ('06-25', '07-25')
+     and gb.period_name                 IN ('07-25', '08-25')
      and gcc.segment3                   NOT LIKE '%ORC%'
      and gcc.segment1                   IN ('001','004','007','009','010','011', '012')
      

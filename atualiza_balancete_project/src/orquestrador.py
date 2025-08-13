@@ -5,14 +5,15 @@ import sys
 import time
 import os
 import locale
+import threading
+import glob
 
-# Define o caminho base onde o script está localizado
+# --- Configuração Inicial ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-os.chdir(BASE_DIR)  # Força a execução no diretório correto
-
-# Configuração do Logging
+os.chdir(BASE_DIR)
+PROJECT_DIR = os.path.dirname(BASE_DIR)
 logging.basicConfig(
-    filename=os.path.join(BASE_DIR, 'processo_orquestrador.log'),
+    filename=os.path.join(PROJECT_DIR, 'processo_orquestrador.log'),
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
@@ -20,9 +21,8 @@ logging.basicConfig(
     encoding='utf-8'
 )
 
-# Funções visuais (sem alterações)
+# --- Funções ---
 def exibir_banner():
-    """Exibe um banner ASCII no terminal."""
     print("=" * 70)
     print(r"""
  
@@ -33,106 +33,121 @@ def exibir_banner():
           ██║  ██║╚██████╔╝██║  ██║╚██████╔╝███████║
           ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
                                          
-              >> ORQUESTRADOR DE ETL v1.0 <<
+              >> ORQUESTRADOR DE ETL v1.5 <<
     """)
     print("=" * 70)
     time.sleep(1)
 
-def atualizar_barra_progresso(progresso, total, comprimento=50):
-    """Desenha ou atualiza uma barra de progresso no terminal."""
+def atualizar_status_linha(progresso, total, comprimento=50, char_spinner=''):
     percentual = int((progresso / total) * 100)
     blocos_preenchidos = int(comprimento * progresso // total)
     barra = "█" * blocos_preenchidos + "-" * (comprimento - blocos_preenchidos)
-    sys.stdout.write(f"\rProgresso: |{barra}| {percentual}% Completo")
+    linha_status = f"Progresso Geral: |{barra}| {percentual}% [{char_spinner}]"
+    sys.stdout.write(f"\r{linha_status:<80}")
     sys.stdout.flush()
 
-# Função para Executar Processos Externos
-def executar_processo(comando):
+def stream_output_reader(pipe, log_level):
     try:
-        logging.info(f"Executando comando: {' '.join(comando)}")
-        resultado = subprocess.run(
-            comando,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding=locale.getpreferredencoding(False),
-            errors='replace',
-            cwd=BASE_DIR
+        for line in iter(pipe.readline, ''):
+            line = line.strip()
+            if line:
+                sys.stdout.write("\r" + " " * 80 + "\r")
+                print(f"    > {line}")
+                if log_level == 'info': logging.info(line)
+                else: logging.warning(line)
+        pipe.close()
+    except Exception as e:
+        logging.error(f"Erro no leitor de stream: {e}")
+
+def executar_com_progresso(descricao_etapa, comando, passo_atual, total_passos):
+    print("\n" + "=" * 70)
+    print(f"  {descricao_etapa}")
+    print("=" * 70)
+    logging.info(descricao_etapa)
+    try:
+        process = subprocess.Popen(
+            comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding=locale.getpreferredencoding(False),
+            errors='replace', cwd=BASE_DIR
         )
-        if resultado.stdout:
-            logging.info("Saida do processo:\n" + resultado.stdout)
-        if resultado.stderr:
-            logging.warning("Saida de erro do processo:\n" + resultado.stderr)
-        logging.info("Comando executado com sucesso.")
-        return True
-    except subprocess.CalledProcessError as e:
-        logging.error(f"!!! ERRO ao executar o comando: {' '.join(comando)}")
-        logging.error("Codigo de retorno: " + str(e.returncode))
-        if e.stdout:
-            logging.error("Saida do processo (stdout):\n" + e.stdout)
-        if e.stderr:
-            logging.error("Saida de erro (stderr):\n" + e.stderr)
-        return False
-    except FileNotFoundError:
-        logging.error(f"!!! ERRO CRÍTICO: O comando '{comando[0]}' nao foi encontrado.")
-        logging.error("Verifique se o Python está no PATH do sistema.")
+        stdout_thread = threading.Thread(target=stream_output_reader, args=(process.stdout, 'info'))
+        stderr_thread = threading.Thread(target=stream_output_reader, args=(process.stderr, 'warning'))
+        stdout_thread.start()
+        stderr_thread.start()
+        spinner_chars = ['/', '-', '\\', '|']
+        i = 0
+        print(f"[Iniciando etapa {passo_atual+1}/{total_passos}] {descricao_etapa}...")
+        process.wait()  # aguarda terminar
+        stdout_thread.join()
+        stderr_thread.join()
+        if process.returncode == 0:
+            atualizar_status_linha(passo_atual + 1, total_passos, char_spinner='OK')
+            print("\n" + "-" * 70)
+            print(f"  ETAPA CONCLUIDA COM SUCESSO")
+            print("-" * 70)
+            logging.info(f"Etapa '{descricao_etapa}' concluída com sucesso.")
+            return True
+        else:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            logging.error(f"!!! Etapa '{descricao_etapa}' falhou com código de retorno {process.returncode}.")
+            return False
+    except Exception:
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        logging.error(f"!!! ERRO INESPERADO na execução da etapa '{descricao_etapa}'", exc_info=True)
         return False
 
-# Bloco Principal de Orquestração
+# --- Bloco Principal ---
 if __name__ == "__main__":
     exibir_banner()
-
-    passo_atual = 0
+    
     total_passos = 3
+    passo_atual = 0
     status_final = "FALHA"
 
     try:
         logging.info("================ INICIO DA ORQUESTRACAO (HORUS) ================")
-        atualizar_barra_progresso(passo_atual, total_passos)
-
+        atualizar_status_linha(passo_atual, total_passos)
+        
         # ETAPA 1: Epoca
-        logging.info("--> ETAPA 1 de 3: Executando processador ETL da Epoca...")
-        script_epoca = os.path.join(BASE_DIR, "processador_ETL_epoca.py")
-        sucesso_epoca = executar_processo([sys.executable, script_epoca])
-        if sucesso_epoca:
-            passo_atual += 1
-            atualizar_barra_progresso(passo_atual, total_passos)
-        else:
+        if not executar_com_progresso(f"ETAPA 1/{total_passos}: Processador ETL da Epoca", [sys.executable, "processador_ETL_epoca.py"], passo_atual, total_passos):
             raise Exception("Falha na Etapa 1: ETL Epoca")
+        passo_atual += 1
 
         # ETAPA 2: Magalu
-        logging.info("--> ETAPA 2 de 3: Executando processador ETL do Magalu...")
-        script_magalu = os.path.join(BASE_DIR, "processador_ETL_magalu.py")
-        sucesso_magalu = executar_processo([sys.executable, script_magalu])
-        if sucesso_magalu:
-            passo_atual += 1
-            atualizar_barra_progresso(passo_atual, total_passos)
-        else:
+        if not executar_com_progresso(f"ETAPA 2/{total_passos}: Processador ETL do Magalu", [sys.executable, "processador_ETL_magalu.py"], passo_atual, total_passos):
             raise Exception("Falha na Etapa 2: ETL Magalu")
-
+        passo_atual += 1
+            
         # ETAPA 3: Notebook
-        logging.info("--> ETAPA 3 de 3: Executando notebook de integracao...")
-        notebook_integracao = os.path.join(BASE_DIR, "integracao_sheets.ipynb")
-        comando_notebook = ["jupyter", "nbconvert", "--to", "notebook", "--execute", notebook_integracao, "--inplace"]
-        sucesso_notebook = executar_processo(comando_notebook)
-        if sucesso_notebook:
-            passo_atual += 1
-            atualizar_barra_progresso(passo_atual, total_passos)
-            print("\n\nOrquestração concluída com SUCESSO!")
-            logging.info("--- PROCESSO DE INTEGRACAO CONCLUIDO COM SUCESSO! ---")
-            status_final = "SUCESSO"
-        else:
+        # Procura automaticamente o .ipynb na pasta src
+        notebooks = glob.glob(os.path.join(BASE_DIR, "*.ipynb"))
+        if not notebooks:
+            raise FileNotFoundError(f"Nenhum arquivo .ipynb encontrado em {BASE_DIR}")
+        
+        caminho_absoluto_notebook = notebooks[0]
+        logging.info(f"Notebook encontrado: {caminho_absoluto_notebook}")
+
+        comando_notebook = [
+            "jupyter", "nbconvert", "--to", "notebook", "--execute",
+            caminho_absoluto_notebook, "--inplace"
+        ]
+
+        if not executar_com_progresso(f"ETAPA 3/{total_passos}: Integracao com Google Sheets", comando_notebook, passo_atual, total_passos):
             raise Exception("Falha na Etapa 3: Notebook de Integração")
+        
+        print("\n\n" + "="*25 + " ORQUESTRACAO FINALIZADA " + "="*26)
+        print("Todos os processos foram concluidos com sucesso!")
+        status_final = "SUCESSO"
 
     except KeyboardInterrupt:
         print("\n\nProcesso interrompido pelo usuário.")
         logging.warning("!!! ORQUESTRACAO INTERROMPIDA PELO USUARIO !!!")
         status_final = "INTERROMPIDO"
         sys.exit(1)
-
+        
     except Exception as e:
         print(f"\n\nERRO: A orquestração falhou. Verifique o arquivo 'processo_orquestrador.log' para detalhes.")
-        logging.error(f"!!! ORQUESTRAÇÃO FALHOU: {e} !!!")
+        logging.error(f"!!! ORQUESTRAÇÃO FALHOU: {e} !!!", exc_info=True)
         sys.exit(1)
 
     finally:
