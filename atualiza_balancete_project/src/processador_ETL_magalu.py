@@ -62,7 +62,7 @@ try:
      and ffvv.flex_value_set_id         IN (1014008,1016808)
      and gb.ledger_id                   IN (2022,2042)
      and gb.actual_flag                 IN ('A')
-     and gb.period_name                 IN ('07-25', '08-25')
+     and gb.period_name                 IN ('06-25', '07-25')
      and gcc.segment3                   NOT LIKE '%ORC%'
      and gcc.segment1                   IN ('001','004','007','009','010','011', '012')
      
@@ -110,6 +110,7 @@ print(f"Salvando arquivo Pickle em: {arquivo_salvo_pkl}")
 try:
     # Assumindo que 'df' é o seu DataFrame final a ser salvo
     colunasParaFormatar = [8,9,10,11,12]
+    formato_numerico = '#,##0.00'
 
     # AJUSTE 2: Use a variável correta 'arquivo_salvo_xlsx' no ExcelWriter.
     with pd.ExcelWriter(arquivo_salvo_xlsx, engine="openpyxl") as writer:
@@ -123,7 +124,7 @@ try:
             # O loop foi mantido como no original, mas pode ser otimizado.
             for cell in worksheet.iter_cols(min_col=colunasDesejadas, max_col=colunasDesejadas, min_row=2):
                 for c in cell:
-                    c.number_format = '0.00'
+                    c.number_format = formato_numerico
     
     print("\nArquivo Excel (.xlsx) salvo e formatado com sucesso.")
 
